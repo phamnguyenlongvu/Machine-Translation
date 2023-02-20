@@ -1,0 +1,16 @@
+{  
+    "dropout": 0.1, 
+    "d_model": 512,
+    "EMB_SIZE": 512,
+    "N_HEAD": 8,
+    "FFN_HID_DIM": 512,
+    "BATCH_SIZE": 128,
+    "N": 6,
+    "Lr": 0.0001,
+    "SRC_LN": "de",
+    "TGT_LN": "en",
+    "UNK_IDX": 1,
+    "PAD_IDX": 2,
+    "BOS_IDX": 3,
+    "EOS_IDX": 4
+}
