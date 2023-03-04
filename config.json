@@ -8,9 +8,5 @@
     "N": 6,
     "Lr": 0.0001,
     "SRC_LN": "de",
-    "TGT_LN": "en",
-    "UNK_IDX": 1,
-    "PAD_IDX": 2,
-    "BOS_IDX": 3,
-    "EOS_IDX": 4
+    "TGT_LN": "en"
 }

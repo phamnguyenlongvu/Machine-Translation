@@ -4,12 +4,13 @@ import torchtext.datasets as datasets
 from LoadData import *
 from model import *
 import torch.nn as nn
+from utils import *
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def train_epoch(model, loss_fn, optimizer, BATCH_SIZE):
+def train_epoch(model, loss_fn, optimizer, BATCH_SIZE, collate_fn):
     model.train()
     losses = 0
     train_iter = datasets.Multi30k(split='train', language_pair=('de', 'en'))
@@ -22,7 +23,7 @@ def train_epoch(model, loss_fn, optimizer, BATCH_SIZE):
 
         tgt_input = tgt[:-1, :]
 
-        src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input)
+        src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input, DEVICE)
 
         logits = model(src, tgt_input, src_mask, tgt_mask,src_padding_mask, tgt_padding_mask, src_padding_mask)
 
@@ -37,7 +38,7 @@ def train_epoch(model, loss_fn, optimizer, BATCH_SIZE):
 
     return losses / count
 
-def evaluate(model, loss_fn, BATCH_SIZE):
+def evaluate(model, loss_fn, BATCH_SIZE, collate_fn):
     model.eval()
     losses = 0
     count = 0
@@ -51,7 +52,7 @@ def evaluate(model, loss_fn, BATCH_SIZE):
 
         tgt_input = tgt[:-1, :]
 
-        src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input)
+        src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input, DEVICE)
 
         logits = model(src, tgt_input, src_mask, tgt_mask,src_padding_mask, tgt_padding_mask, src_padding_mask)
         
@@ -64,14 +65,14 @@ def evaluate(model, loss_fn, BATCH_SIZE):
 if __name__ == "__main__":
     torch.manual_seed(0)
 
-    spacy_de, spacy_en = load_tokenizers()
-    vocab_de, vocab_en = load_vocab(spacy_de, spacy_en)
-    SRC_VOCAB_SIZE = len(vocab_de)
-    TGT_VOCAB_SIZE = len(vocab_en)
+    token_transform = PreprocessingData().get_token()
+    vocab_transform = PreprocessingData().get_vocab()
+    SRC_VOCAB_SIZE = len(vocab_transform['de'])
+    TGT_VOCAB_SIZE = len(vocab_transform['en'])
     EMB_SIZE = 512
     NHEAD = 8
     FFN_HID_DIM = 512
-    BATCH_SIZE = 128
+    BATCH_SIZE = 32
     NUM_ENCODER_LAYERS = 3
     NUM_DECODER_LAYERS = 3
 
@@ -91,9 +92,11 @@ if __name__ == "__main__":
     from timeit import default_timer as timer
     NUM_EPOCHS = 18
 
+    collate = Collation(token_transform, vocab_transform)
+    print("Training .... ")
     for epoch in range(1, NUM_EPOCHS+1):
         start_time = timer()
-        train_loss = train_epoch(transformer, loss_fn, optimizer, BATCH_SIZE)
+        train_loss = train_epoch(transformer, loss_fn, optimizer, BATCH_SIZE, collate.collate_fn)
         end_time = timer()
-        val_loss = evaluate(transformer, loss_fn, BATCH_SIZE)
+        val_loss = evaluate(transformer, loss_fn, BATCH_SIZE, collate.collate_fn)
         print((f"Epoch: {epoch}, Train loss: {train_loss:.3f}, Val loss: {val_loss:.3f}, "f"Epoch time = {(end_time - start_time):.3f}s"))
