@@ -5,6 +5,7 @@ from LoadData import *
 from model import *
 import torch.nn as nn
 from utils import *
+from model1 import *
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -22,10 +23,16 @@ def train_epoch(model, loss_fn, optimizer, BATCH_SIZE, collate_fn):
         count += 1
 
         tgt_input = tgt[:-1, :]
+        print(src.shape)
+        print(tgt.shape)
 
-        src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input, DEVICE)
+        # src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input, DEVICE)
 
-        logits = model(src, tgt_input, src_mask, tgt_mask,src_padding_mask, tgt_padding_mask, src_padding_mask)
+        # logits = model(src, tgt_input, src_mask, tgt_mask,src_padding_mask, tgt_padding_mask, src_padding_mask)
+
+        logits = model(src.transpose(0, 1), tgt_input.transpose(0, 1))
+        # logits = model(src, tgt_input, src_padding_mask, tgt_padding_mask)
+
 
         optimizer.zero_grad()
 
@@ -52,9 +59,13 @@ def evaluate(model, loss_fn, BATCH_SIZE, collate_fn):
 
         tgt_input = tgt[:-1, :]
 
-        src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input, DEVICE)
+        # src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input, DEVICE)
 
-        logits = model(src, tgt_input, src_mask, tgt_mask,src_padding_mask, tgt_padding_mask, src_padding_mask)
+
+        # logits = model(src, tgt_input, src_mask, tgt_mask,src_padding_mask, tgt_padding_mask, src_padding_mask)
+        logits = model(src, tgt_input)
+        # logits = model(src, tgt_input, src_mask, tgt_mask)
+
         
         tgt_out = tgt[1:, :]
         loss = loss_fn(logits.reshape(-1, logits.shape[-1]), tgt_out.reshape(-1))
@@ -63,21 +74,22 @@ def evaluate(model, loss_fn, BATCH_SIZE, collate_fn):
     return losses / count
 
 if __name__ == "__main__":
-    torch.manual_seed(0)
 
     token_transform = PreprocessingData().get_token()
     vocab_transform = PreprocessingData().get_vocab()
     SRC_VOCAB_SIZE = len(vocab_transform['de'])
     TGT_VOCAB_SIZE = len(vocab_transform['en'])
     EMB_SIZE = 512
-    NHEAD = 8
+    NHEAD = 4
     FFN_HID_DIM = 512
     BATCH_SIZE = 32
     NUM_ENCODER_LAYERS = 3
     NUM_DECODER_LAYERS = 3
 
-    transformer = Seq2SeqTransformer(NUM_ENCODER_LAYERS, NUM_DECODER_LAYERS, EMB_SIZE, 
-                                    NHEAD, SRC_VOCAB_SIZE, TGT_VOCAB_SIZE, FFN_HID_DIM)
+    # transformer = Seq2SeqTransformer(NUM_ENCODER_LAYERS, NUM_DECODER_LAYERS, EMB_SIZE, 
+    #                                 NHEAD, SRC_VOCAB_SIZE, TGT_VOCAB_SIZE, FFN_HID_DIM)
+
+    transformer = Transformer(SRC_VOCAB_SIZE, TGT_VOCAB_SIZE, EMB_SIZE, NHEAD, 500, FFN_HID_DIM, 3, 0.1, device=DEVICE)
 
     for p in transformer.parameters():
         if p.dim() > 1:
@@ -85,7 +97,7 @@ if __name__ == "__main__":
 
     transformer = transformer.to(DEVICE)
 
-    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=2)
+    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=1)
 
     optimizer = torch.optim.Adam(transformer.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-9)
 
