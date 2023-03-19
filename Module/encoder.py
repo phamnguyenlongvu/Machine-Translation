@@ -14,7 +14,6 @@ class EncoderLayer(torch.nn.Module):
         self.dropout2 = torch.nn.Dropout(dropout)
 
     def forward(self, x, src_mask):
-        print("In encoder")
         _x = x 
         x = self.attention(x, x, x, src_mask)
         x = self.dropout1(x)

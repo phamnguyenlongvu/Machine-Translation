@@ -1,5 +1,6 @@
 import torch
 import math
+from torch.nn.functional import log_softmax
 
 class PositionalEncoding(torch.nn.Module):
     def __init__(self, d_model, max_size, device):
@@ -36,15 +37,9 @@ class MultiHeadAttention(torch.nn.Module):
 
     def forward(self, q, k, v, mask=None):
         # Create q, k, v through Linear 
-        print("+++")
-        print(q.shape)
-        print(k.shape)
-        print(v.shape)
         q, k, v = self.w_q(q), self.w_k(k), self.w_v(v)
         # Split
         q, k, v = self.split(q), self.split(k), self.split(v)
-
-
         # Compute attention
         out, _ = self.attention(q, k, v, mask)
         out = self.concat(out)
@@ -80,17 +75,9 @@ class Attention(torch.nn.Module):
         self.softmax = torch.nn.Softmax(dim=-1)
 
     def forward(self, q, k, v, mask=None, dropout=None):
-        # if mask is not None:
-        #     mask = mask.unsqueeze(1)
         d_tensor = k.size(-1)
-        print("+++++++++++++")
-        print(q.shape)
-        print(k.shape)
-        print(k.transpose(-2, -1).shape)
 
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_tensor)
-        print(scores.size())
-        print(mask.shape)
         if mask is not None:
             scores = scores.masked_fill(mask==0, -1e10)
 
@@ -150,4 +137,12 @@ class TransformerEmbedding(torch.nn.Module):
         tok_emb = self.tok_emb(x)
         pos_emb = self.pos_emb(x)
         return self.dropout(tok_emb + pos_emb)
+    
+class Generator(torch.nn.Module):
+    def __init__(self, d_model, vocab):
+        super(Generator, self).__init__()
+        self.proj = torch.nn.Linear(d_model, vocab)
+
+    def forward(self, x):
+        return log_softmax(self.proj(x), dim =-1)
 

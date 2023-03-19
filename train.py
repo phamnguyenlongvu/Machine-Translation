@@ -6,6 +6,8 @@ from model import *
 import torch.nn as nn
 from utils import *
 from model1 import *
+import argparse
+import matplotlib.pyplot as plt
 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -23,20 +25,16 @@ def train_epoch(model, loss_fn, optimizer, BATCH_SIZE, collate_fn):
         count += 1
 
         tgt_input = tgt[:-1, :]
-        print(src.shape)
-        print(tgt.shape)
 
-        # src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input, DEVICE)
+        src_mask = make_pad_mask(src.transpose(0, 1), src.transpose(0, 1))
+        src_tgt_mask = make_pad_mask(tgt_input.transpose(0, 1), src.transpose(0, 1))
+        tgt_mask = make_pad_mask(tgt_input.transpose(0, 1), tgt_input.transpose(0, 1)) * subsequent_mask(tgt_input.transpose(0, 1), tgt_input.transpose(0, 1), DEVICE)
 
-        # logits = model(src, tgt_input, src_mask, tgt_mask,src_padding_mask, tgt_padding_mask, src_padding_mask)
-
-        logits = model(src.transpose(0, 1), tgt_input.transpose(0, 1))
-        # logits = model(src, tgt_input, src_padding_mask, tgt_padding_mask)
-
+        logits = model(src.transpose(0, 1), tgt_input.transpose(0, 1), src_mask, src_tgt_mask, tgt_mask)
 
         optimizer.zero_grad()
 
-        tgt_out = tgt[1:, :]
+        tgt_out = tgt[1:, :].transpose(0, 1)
         loss = loss_fn(logits.reshape(-1, logits.shape[-1]), tgt_out.reshape(-1))
         loss.backward()
 
@@ -59,22 +57,29 @@ def evaluate(model, loss_fn, BATCH_SIZE, collate_fn):
 
         tgt_input = tgt[:-1, :]
 
-        # src_mask, tgt_mask, src_padding_mask, tgt_padding_mask = create_mask(src, tgt_input, DEVICE)
+        src_mask = make_pad_mask(src.transpose(0, 1), src.transpose(0, 1))
+        src_tgt_mask = make_pad_mask(tgt_input.transpose(0, 1), src.transpose(0, 1))
+        tgt_mask = make_pad_mask(tgt_input.transpose(0, 1), tgt_input.transpose(0, 1)) * subsequent_mask(tgt_input.transpose(0, 1), tgt_input.transpose(0, 1), DEVICE)
 
-
-        # logits = model(src, tgt_input, src_mask, tgt_mask,src_padding_mask, tgt_padding_mask, src_padding_mask)
-        logits = model(src, tgt_input)
-        # logits = model(src, tgt_input, src_mask, tgt_mask)
-
+        logits = model(src.transpose(0, 1), tgt_input.transpose(0, 1), src_mask, src_tgt_mask, tgt_mask)
         
-        tgt_out = tgt[1:, :]
+        tgt_out = tgt[1:, :].transpose(0, 1)
         loss = loss_fn(logits.reshape(-1, logits.shape[-1]), tgt_out.reshape(-1))
         losses += loss.item()
 
     return losses / count
 
-if __name__ == "__main__":
+def curve(loss):
+    plt.figure(figsize=(8,8))
+    plt.plot(loss['train'])
+    plt.plot(loss['val'])
+    plt.title('Loss curve')
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.legend(['train', 'val'], loc='upper left')
+    plt.show()
 
+def train():
     token_transform = PreprocessingData().get_token()
     vocab_transform = PreprocessingData().get_vocab()
     SRC_VOCAB_SIZE = len(vocab_transform['de'])
@@ -85,9 +90,6 @@ if __name__ == "__main__":
     BATCH_SIZE = 32
     NUM_ENCODER_LAYERS = 3
     NUM_DECODER_LAYERS = 3
-
-    # transformer = Seq2SeqTransformer(NUM_ENCODER_LAYERS, NUM_DECODER_LAYERS, EMB_SIZE, 
-    #                                 NHEAD, SRC_VOCAB_SIZE, TGT_VOCAB_SIZE, FFN_HID_DIM)
 
     transformer = Transformer(SRC_VOCAB_SIZE, TGT_VOCAB_SIZE, EMB_SIZE, NHEAD, 500, FFN_HID_DIM, 3, 0.1, device=DEVICE)
 
@@ -102,13 +104,55 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(transformer.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-9)
 
     from timeit import default_timer as timer
-    NUM_EPOCHS = 18
+    NUM_EPOCHS = 10
 
     collate = Collation(token_transform, vocab_transform)
+    loss = {
+        'train': [],
+        'val': []
+    }
     print("Training .... ")
     for epoch in range(1, NUM_EPOCHS+1):
         start_time = timer()
         train_loss = train_epoch(transformer, loss_fn, optimizer, BATCH_SIZE, collate.collate_fn)
+        loss['train'].append(train_loss)
         end_time = timer()
         val_loss = evaluate(transformer, loss_fn, BATCH_SIZE, collate.collate_fn)
+        loss['val'].append(val_loss)
         print((f"Epoch: {epoch}, Train loss: {train_loss:.3f}, Val loss: {val_loss:.3f}, "f"Epoch time = {(end_time - start_time):.3f}s"))
+
+    curve(loss)
+
+    torch.save(transformer.state_dict(), 'Saved/first.pt')
+
+def test():
+    token_transform = PreprocessingData().get_token()
+    vocab_transform = PreprocessingData().get_vocab()
+    SRC_VOCAB_SIZE = len(vocab_transform['de'])
+    TGT_VOCAB_SIZE = len(vocab_transform['en'])
+    EMB_SIZE = 512
+    NHEAD = 4
+    FFN_HID_DIM = 512
+    BATCH_SIZE = 32
+    NUM_ENCODER_LAYERS = 3
+    NUM_DECODER_LAYERS = 3
+    collation = Collation(token_transform, vocab_transform)
+    text_transform = collation.get_text_transform()
+    model = Transformer(SRC_VOCAB_SIZE, TGT_VOCAB_SIZE, EMB_SIZE, NHEAD, 500, FFN_HID_DIM, 3, 0.1, device=DEVICE).to(device=DEVICE)
+    
+    print("Load model completed ....")
+    src_sentence = 'Eine Gruppe von Menschen steht vor einem Iglu .'
+    print(translate(model, src_sentence, text_transform, vocab_transform, DEVICE))
+
+
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', default='train')
+    arg = parser.parse_args()
+    if arg.mode == 'train':
+        train()
+    elif arg.mode == 'test':
+        test()
+    # print(arg.mode)

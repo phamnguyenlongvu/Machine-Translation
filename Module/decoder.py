@@ -18,7 +18,6 @@ class DecoderLayer(torch.nn.Module):
         self.dropout3 = torch.nn.Dropout(dropout)
 
     def forward(self, x, memory, src_mask, tgt_mask):
-        print("In decoder")
         # self attention - sublayer1
         _x = x
         x = self.attention(q=x, k=x, v=x, mask=tgt_mask)
