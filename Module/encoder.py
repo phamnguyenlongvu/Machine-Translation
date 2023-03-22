@@ -27,15 +27,12 @@ class EncoderLayer(torch.nn.Module):
         return x
     
 class Encoder(torch.nn.Module):
-    def __init__(self, vocab_size, max_size, d_model, ffn_hidden,
-                 n_head, n_layers, dropout, device):
+    def __init__(self, d_model, ffn_hidden, n_head, n_layers, dropout):
         super(Encoder, self).__init__()
-        self.emb = other_module.TransformerEmbedding(vocab_size, d_model, max_size, device)
         self.layers = torch.nn.ModuleList([EncoderLayer(d_model, ffn_hidden, n_head, dropout)
                                            for _ in range(n_layers)])
         
     def forward(self, x , src_mask):
-        x = self.emb(x)
         for layer in self.layers:
             x = layer(x, src_mask)
 

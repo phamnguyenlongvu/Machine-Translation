@@ -39,22 +39,15 @@ class DecoderLayer(torch.nn.Module):
         return x
     
 class Decoder(torch.nn.Module):
-    def __init__(self, vocab_size, max_size, d_model, ffn_hidden, n_head, n_layers, dropout, device):
+    def __init__(self, vocab_size, d_model, ffn_hidden, n_head, n_layers, dropout):
         super(Decoder, self).__init__()
-        self.emb = other_module.TransformerEmbedding(vocab_size, d_model, max_size, device)
-
         self.layers = torch.nn.ModuleList([DecoderLayer(d_model, ffn_hidden, n_head, dropout)
                                            for _ in range(n_layers)])
-        self.linear = torch.nn.Linear(d_model, vocab_size)
 
     def forward(self, x, memory, src_mask, tgt_mask):
-        x = self.emb(x)
-
         for layer in self.layers:
             x = layer(x, memory, src_mask, tgt_mask)
-
-        out = self.linear(x)
-        return out
+        return x
 
 
 

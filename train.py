@@ -18,56 +18,53 @@ def train_epoch(model, loss_fn, optimizer, BATCH_SIZE, collate_fn):
     losses = 0
     train_iter = datasets.Multi30k(split='train', language_pair=('de', 'en'))
     train_dataloader = DataLoader(train_iter, batch_size=BATCH_SIZE, collate_fn=collate_fn)
-    count = 0
     for src, tgt in train_dataloader:
         src = src.to(DEVICE)
         tgt = tgt.to(DEVICE)
-        count += 1
+        tgt_input = tgt[:, :-1]
 
-        tgt_input = tgt[:-1, :]
+        src_mask = make_pad_mask(src, src)
+        src_tgt_mask = make_pad_mask(tgt_input, src)
+        tgt_mask = make_pad_mask(tgt_input, tgt_input) * subsequent_mask(tgt_input, tgt_input, DEVICE)
 
-        src_mask = make_pad_mask(src.transpose(0, 1), src.transpose(0, 1))
-        src_tgt_mask = make_pad_mask(tgt_input.transpose(0, 1), src.transpose(0, 1))
-        tgt_mask = make_pad_mask(tgt_input.transpose(0, 1), tgt_input.transpose(0, 1)) * subsequent_mask(tgt_input.transpose(0, 1), tgt_input.transpose(0, 1), DEVICE)
-
-        logits = model(src.transpose(0, 1), tgt_input.transpose(0, 1), src_mask, src_tgt_mask, tgt_mask)
+        logits = model(src, tgt_input, src_mask, src_tgt_mask, tgt_mask)
 
         optimizer.zero_grad()
 
-        tgt_out = tgt[1:, :].transpose(0, 1)
+        tgt_out = tgt[:, 1:]
         loss = loss_fn(logits.reshape(-1, logits.shape[-1]), tgt_out.reshape(-1))
+        print(logits.reshape(-1, logits.shape[-1]).shape)
+        print(tgt_out.reshape(-1).shape)
         loss.backward()
 
         optimizer.step()
         losses += loss.item()
 
-    return losses / count
+    return losses / len(list(train_dataloader))
 
 def evaluate(model, loss_fn, BATCH_SIZE, collate_fn):
     model.eval()
     losses = 0
-    count = 0
     val_iter = datasets.Multi30k(split='valid', language_pair=('de', 'en'))
     val_dataloader = DataLoader(val_iter, batch_size=BATCH_SIZE, collate_fn=collate_fn)
 
     for src, tgt in val_dataloader:
-        count += 1
         src = src.to(DEVICE)
         tgt = tgt.to(DEVICE)
 
-        tgt_input = tgt[:-1, :]
+        tgt_input = tgt[:, :-1]
 
-        src_mask = make_pad_mask(src.transpose(0, 1), src.transpose(0, 1))
-        src_tgt_mask = make_pad_mask(tgt_input.transpose(0, 1), src.transpose(0, 1))
-        tgt_mask = make_pad_mask(tgt_input.transpose(0, 1), tgt_input.transpose(0, 1)) * subsequent_mask(tgt_input.transpose(0, 1), tgt_input.transpose(0, 1), DEVICE)
+        src_mask = make_pad_mask(src, src)
+        src_tgt_mask = make_pad_mask(tgt_input, src)
+        tgt_mask = make_pad_mask(tgt_input, tgt_input) * subsequent_mask(tgt_input, tgt_input, DEVICE)
 
-        logits = model(src.transpose(0, 1), tgt_input.transpose(0, 1), src_mask, src_tgt_mask, tgt_mask)
+        logits = model(src, tgt_input, src_mask, src_tgt_mask, tgt_mask)
         
-        tgt_out = tgt[1:, :].transpose(0, 1)
+        tgt_out = tgt[:, 1:]
         loss = loss_fn(logits.reshape(-1, logits.shape[-1]), tgt_out.reshape(-1))
         losses += loss.item()
 
-    return losses / count
+    return losses / len(list(val_dataloader))
 
 def curve(loss):
     plt.figure(figsize=(8,8))
@@ -88,10 +85,11 @@ def train():
     NHEAD = 4
     FFN_HID_DIM = 512
     BATCH_SIZE = 32
-    NUM_ENCODER_LAYERS = 3
-    NUM_DECODER_LAYERS = 3
+    NUM_LAYERS = 3
+    DROP_PROB = 0.1
+    MAX_SIZE = 100
 
-    transformer = Transformer(SRC_VOCAB_SIZE, TGT_VOCAB_SIZE, EMB_SIZE, NHEAD, 500, FFN_HID_DIM, 3, 0.1, device=DEVICE)
+    transformer = Transformer(SRC_VOCAB_SIZE, TGT_VOCAB_SIZE, EMB_SIZE, NHEAD, MAX_SIZE, FFN_HID_DIM, NUM_LAYERS, DROP_PROB, device=DEVICE)
 
     for p in transformer.parameters():
         if p.dim() > 1:
@@ -106,7 +104,7 @@ def train():
     from timeit import default_timer as timer
     NUM_EPOCHS = 10
 
-    collate = Collation(token_transform, vocab_transform)
+    collate = Collation(token_transform, vocab_transform, MAX_SIZE)
     loss = {
         'train': [],
         'val': []

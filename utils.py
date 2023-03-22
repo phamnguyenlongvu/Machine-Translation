@@ -1,6 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from typing import List
+from torch.nn.functional import pad
 
 def subsequent_mask(q, k, DEVICE):
     len_q, len_k = q.size(1), k.size(1)
@@ -50,7 +51,7 @@ def translate(model: torch.nn.Module, src_sentence: str, text_transform, vocab_t
     return " ".join(vocab_transform['en'].lookup_tokens(list(tgt_tokens.cpu().numpy()))).replace("<bos>", "").replace("<eos>", "")
 
 class Collation:
-    def __init__(self, token_transform, vocab_transform):
+    def __init__(self, token_transform, vocab_transform, max_padding):
         self.token_transform = token_transform
         self.vocab_transform = vocab_transform
         self.text_transform = {}
@@ -58,6 +59,7 @@ class Collation:
             self.text_transform[ln] = self.sequential_transforms(token_transform[ln], #Tokenization
                                                                 vocab_transform[ln], #Numericalization
                                                                 self.tensor_transform) # Add BOS/EOS and create 
+        self.max_padding = max_padding
 
     def sequential_transforms(self, *transforms):
         def func(txt_input):
@@ -74,11 +76,20 @@ class Collation:
     def collate_fn(self, batch):
         src_batch, tgt_batch = [], []
         for src_sample, tgt_sample in batch:
-            src_batch.append(self.text_transform['de'](src_sample.rstrip("\n")))
-            tgt_batch.append(self.text_transform['en'](tgt_sample.rstrip("\n")))
+            process_src = self.text_transform['de'](src_sample.rstrip("\n"))
+            src_batch.append(pad(
+                            process_src,
+                            (0, self.max_padding - process_src.size(0)),
+                            value=1))
+            process_tgt = self.text_transform['en'](tgt_sample.rstrip("\n"))
+            tgt_batch.append(pad(
+                            process_tgt,
+                            (0, self.max_padding - process_tgt.size(0)),
+                            value=1))
 
-        src_batch = pad_sequence(src_batch, padding_value=1)
-        tgt_batch = pad_sequence(tgt_batch, padding_value=1)
+
+        src_batch = pad_sequence(src_batch, batch_first= True, padding_value=1)
+        tgt_batch = pad_sequence(tgt_batch, batch_first= True, padding_value=1)
         return src_batch, tgt_batch
     
     def get_text_transform(self):
